@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Earthquake Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/three@0.136.0"></script>
+    <script src="https://unpkg.com/globe.gl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { margin: 0; font-family: sans-serif; overflow: hidden; }
+        nav { position: absolute; width: 100%; top: 0; z-index: 3; display: flex; justify-content: space-between; padding: 10px 20px; background-color: rgba(0, 0, 0, 0.8); color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .earthquake-list { position: absolute; width: 300px; max-height: 300px; overflow-y: auto; background-color: rgb(0, 0, 0); padding: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(80, 80, 80, 0.5); z-index: 2; color: grey; }
+        #earthquake-list-latest { left: 20px; top: 80px; }
+        #earthquake-list-30days { right: 20px; top: 80px; }
+        #globeViz { width: 100vw; height: 100vh; }
+        .earthquake-item { margin-bottom: 10px; padding: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <nav class="bg-gray-800">
+        <spa class="p=1">Live Earthquake Tracker</span>
+        <button id="modeToggle" class="rounded bg-black-300 p-2">Toggle Day/Night</button>
+        <a href="/map_view" target="_blank" class="rounded bg-black-300 p-2">Tectonic Plates</a>
+        <a href="/visualizations" target="_blank" class="rounded bg-black-300 p-2">Visualizations</a>
+
+    </nav>
+    
+    <div id="earthquake-list-latest" class="earthquake-list"></div>
+    <div id="earthquake-list-30days" class="earthquake-list"></div>
+    <div id="globeViz"></div>
+    
+
+    <script>
+        window.onload = function() {
+            const globeElement = document.getElementById('globeViz');
+            const globe = Globe()(globeElement);
+            globe.globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+                .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png');
+    
+            let isDarkMode = true;
+            document.getElementById('modeToggle').addEventListener('click', function() {
+                isDarkMode = !isDarkMode;
+                globe.globeImageUrl(isDarkMode ? '//unpkg.com/three-globe/example/img/earth-night.jpg' : '//unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+            });
+    
+            function getMarkerColor(magnitude) {
+                return magnitude < 5 ? 'green' : magnitude < 6 ? 'yellow' : 'red';
+            }
+    
+            function updateEarthquakeList(data, containerId, title) {
+                const listContainer = document.getElementById(containerId);
+                listContainer.innerHTML = `<h3>${title}</h3>`;
+                data.slice(0, 5).forEach(earthquake => {
+                    const magnitude = earthquake.properties.mag;
+                    const place = earthquake.properties.place;
+                    const time = new Date(earthquake.properties.time).toLocaleString();
+    
+                    const item = document.createElement('div');
+                    item.className = 'earthquake-item';
+                    item.innerHTML = `<strong>${place}</strong><br>Magnitude: ${magnitude}<br>${time}`;
+                    listContainer.appendChild(item);
+                });
+            }
+    
+            function centerGlobeOnPoints(data) {
+                if (!data.length) return;
+                const sumCoords = data.reduce((acc, val) => {
+                    acc.lat += val.geometry.coordinates[1];
+                    acc.lng += val.geometry.coordinates[0];
+                    return acc;
+                }, { lat: 0, lng: 0 });
+                const avgCoords = { lat: sumCoords.lat / data.length, lng: sumCoords.lng / data.length };
+                globe.pointOfView({ lat: avgCoords.lat, lng: avgCoords.lng, altitude: 2 });
+            }
+    
+            function fetchEarthquakeData() {
+    axios.get('/earthquakes')
+        .then(function (response) {
+            const data = response.data.features;
+            updateEarthquakeList(data, 'earthquake-list-latest', 'Latest Earthquakes');
+            centerGlobeOnPoints(data);
+
+
+            fetchAdditionalData(data);
+        })
+        .catch(function (error) { console.log(error); });
+}
+
+function fetchAdditionalData(latestData) {
+    axios.get('/earthquakes_30_days')
+        .then(response => {
+            const data30Days = response.data.features;
+            updateEarthquakeList(data30Days, 'earthquake-list-30days', 'Top 5 in Last 30 Days');
+
+
+            const combinedData = [...new Map([...latestData, ...data30Days].map(eq => [eq.id, eq])).values()];
+
+
+            const earthquakePoints = combinedData.map(earthquake => ({
+                lat: earthquake.geometry.coordinates[1],
+                lng: earthquake.geometry.coordinates[0],
+                size: earthquake.properties.mag / 10,
+                color: getMarkerColor(earthquake.properties.mag),
+                onClick: () => { alert(`Earthquake: ${earthquake.properties.title}`); }
+            }));
+
+            globe.pointsData(earthquakePoints);
+        })
+        .catch(error => { console.log(error); });
+}
+
+    
+            fetchEarthquakeData();
+            fetchAdditionalData();
+            setInterval(fetchEarthquakeData, 60000);
+            setInterval(fetchAdditionalData, 60000);
+            function rotateGlobe() {
+                requestAnimationFrame(rotateGlobe);
+                globe.controls().autoRotate = true;
+                globe.controls().autoRotateSpeed = 0.7;
+            }
+            rotateGlobe();
+        };
+    </script>
+    
+</body>
+</html>

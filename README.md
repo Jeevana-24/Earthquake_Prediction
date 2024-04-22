@@ -32,3 +32,4 @@ The dataset includes over 4 million records and is approximately 1.2 GB in CSV f
 6. Results
     The models predict potential locations and magnitudes of seismic events. Results are stored in the results/ directory and include latitude, longitude, and magnitude categories of predicted seismic activities.
 7. Screenshots
+   ![Main_Page](frontend.png)
